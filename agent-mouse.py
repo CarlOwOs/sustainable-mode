@@ -23,10 +23,13 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import argparse
 import asyncio
 
-from browser_use import Agent
-from browser_use.browser.browser import Browser, BrowserConfig
+import dotenv
+
+from browser_use import Agent, ActionResult
+from browser_use.browser.browser import Browser, BrowserConfig, BrowserContext
 from browser_use.controller.service import Controller
 
+dotenv.load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -99,7 +102,7 @@ def get_llm():
         callbacks=[LoggingCallbackHandler()]
     )
 
-@controller.action('Read the most recent image from my S3 bucket')
+@controller.action('Download the most recent image from my S3 bucket')
 async def read_most_recent_image_from_s3():
     print("Reading the most recent image from my S3 bucket")
     s3 = boto3.client('s3')
@@ -112,21 +115,130 @@ async def read_most_recent_image_from_s3():
         # Get the most recent image by sorting by last modified date
         most_recent_image = max(response['Contents'], key=lambda x: x['LastModified'])
         image_key = most_recent_image['Key']
-        image_url = f"https://{bucket_name}.s3.amazonaws.com/{image_key}"
-        return image_url
+        
+        # Create a temporary directory if it doesn't exist
+        ricardo_dir = os.path.expanduser("/Users/carloshurtado/Documents/epfl/sustainable-mode/ricardo")
+        os.makedirs(ricardo_dir, exist_ok=True)
+        
+        # Download the image to the temporary directory
+        local_path = os.path.join(ricardo_dir, os.path.basename(image_key))
+        s3.download_file(bucket_name, image_key, local_path)
+        
+        return local_path
     else:
         return "No images found in the S3 bucket"
 
+@controller.action('File selection with AppleScript')
+def simple_file_selection():
+    ricardo_dir = os.path.expanduser("/Users/carloshurtado/Documents/epfl/sustainable-mode/ricardo")
+    image_files = [f for f in os.listdir(ricardo_dir) if os.path.isfile(os.path.join(ricardo_dir, f)) and f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.heic'))]
+    if not image_files:
+        raise ValueError("No image files found in /ricardo directory")
+    path = os.path.join(ricardo_dir, image_files[0])
+    
+    try:
+        applescript = '''
+        set targetPath to "/Users/carloshurtado/Documents/epfl/sustainable-mode/ricardo"
+        tell application "System Events"
+            -- Activate the file upload window
+            keystroke "G" using {command down, shift down} -- "Go to Folder..." shortcut
+            delay 0.5 -- wait briefly for dialog to open
+            
+            -- Paste the desired directory path
+            keystroke targetPath
+            delay 0.2
+
+            keystroke return
+            delay 0.2
+
+            -- Press tab to move to the file list
+            keystroke "a" using {command down}
+            delay 0.2
+
+            keystroke return
+        end tell
+        '''
+        
+        # Execute the AppleScript
+        import subprocess
+        process = subprocess.Popen(['osascript', '-e', applescript],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+        if stderr:
+            return ActionResult(error=f"AppleScript error: {stderr.decode()}")
+        return ActionResult(extracted_content=f"Selected file {image_name} and clicked Open button")
+    except Exception as e:
+        return ActionResult(error=f"Failed to run AppleScript: {str(e)}")
+
+    
+
 # Define the task for the agent
-task = (
-    "Read the most recent image from my S3 bucket."
-    "Do reverse image search with the image url from the previous action."
-    # "Find the most similar image in the search results."
-    # "Click on the most similar image."
-    # "Open the website of the image in a new tab."
-    # "Extract the text from the website."
-    # "Summarize the text in 3-4 sentences."
-)
+task = """
+### Prompt for Selling Agent – Facebook Marketplace Item Posting
+
+**Objective:**  
+Visit [facebook](https://www.facebook.com/marketplace/create/item/), add pictures, create a detailed listing for a used item with appropriate pricing, shipping options, and complete the posting process.
+
+**Important:**
+- You'll need to download and use the most recent image from the S3 bucket for the listing.
+- Be thorough in the item description to increase chances of selling.
+- Set a competitive but reasonable price based on item condition.
+- Select appropriate shipping options that balance convenience and cost.
+
+I am selling a used mac charger.
+
+---
+
+### Step 1: Navigate to Facebook Marketplace
+- Open [Facebook Marketplace](https://www.facebook.com/marketplace/create/item/).
+
+---
+
+### Step 2: Download and Prepare the Image
+- Download the most recent image from the S3 bucket.
+- Ensure the image is ready for upload.
+
+---
+
+### Step 3: Click on the image upload button
+
+
+---
+
+### Step 4: Run file selection AppleScript. RUN THE SCRIPT ONLY ONCE.
+
+---
+
+### Step 5: Write a descriptive title of the item.
+
+--- 
+
+### Step 6: Write a competitive and reasonable price.
+
+---
+
+### Step 7: Click on the Category button and select the appropriate category.
+
+---
+
+### Step 8: Click on the Condition button and select the appropriate condition.
+
+---
+
+### Step 9: Write a detailed description of the item using good copywriting skills.
+
+---
+
+### Step 10: Click on the "Next" button.
+
+---
+
+### Step 11: Click on the "Publish" button.
+
+
+**Important:** Be precise and thorough throughout the process to create an attractive and effective listing.
+"""
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--query', type=str, help='The query for the agent to execute', default=task)
@@ -144,6 +256,7 @@ logger.info("LLM initialized with model: us.amazon.nova-pro-v1:0")
 browser = Browser(
     config=BrowserConfig(
         # chrome_instance_path='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        chrome_instance_path='/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
     )
 )
 
