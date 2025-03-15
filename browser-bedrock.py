@@ -14,7 +14,7 @@ import os
 import sys
 import logging
 import json
-
+import boto3
 from langchain_aws import ChatBedrock
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -38,6 +38,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+controller = Controller()
 
 class LoggingCallbackHandler(BaseCallbackHandler):
     def __init__(self):
@@ -98,13 +99,33 @@ def get_llm():
         callbacks=[LoggingCallbackHandler()]
     )
 
+@controller.action('Read the most recent image from my S3 bucket')
+async def read_most_recent_image_from_s3():
+    print("Reading the most recent image from my S3 bucket")
+    s3 = boto3.client('s3')
+    bucket_name = os.environ.get('S3_BUCKET_NAME')
+    if not bucket_name:
+        raise ValueError("S3_BUCKET_NAME environment variable is not set")
+
+    response = s3.list_objects_v2(Bucket=bucket_name)
+    if 'Contents' in response:
+        # Get the most recent image by sorting by last modified date
+        most_recent_image = max(response['Contents'], key=lambda x: x['LastModified'])
+        image_key = most_recent_image['Key']
+        image_url = f"https://{bucket_name}.s3.amazonaws.com/{image_key}"
+        return image_url
+    else:
+        return "No images found in the S3 bucket"
 
 # Define the task for the agent
 task = (
-    "Visit cnn.com, navigate to the 'World News' section, and identify the latest headline. "
-    "Open the first article and summarize its content in 3-4 sentences. "
-    "Additionally, analyze the sentiment of the article (positive, neutral, or negative) "
-    "and provide a confidence score for the sentiment. Present the result in a tabular format."
+    "Read the most recent image from my S3 bucket."
+    "Do reverse image search with the image url from the previous action."
+    # "Find the most similar image in the search results."
+    # "Click on the most similar image."
+    # "Open the website of the image in a new tab."
+    # "Extract the text from the website."
+    # "Summarize the text in 3-4 sentences."
 )
 
 parser = argparse.ArgumentParser()
@@ -137,7 +158,7 @@ class BedrockAgent(Agent):
 agent = BedrockAgent(
     task=args.query, 
     llm=llm, 
-    controller=Controller(), 
+    controller=controller, 
     browser=browser, 
     validate_output=True,
     tool_calling_method=None,  # Explicitly set to None for Bedrock compatibility
