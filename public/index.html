@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>S3 Image Uploader</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .upload-container {
+      border: 2px dashed #ccc;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 20px;
+      border-radius: 5px;
+    }
+    .upload-container:hover {
+      border-color: #999;
+    }
+    #file-input {
+      display: none;
+    }
+    .upload-btn {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 10px 0;
+    }
+    .upload-btn:hover {
+      background-color: #45a049;
+    }
+    #preview {
+      max-width: 100%;
+      max-height: 300px;
+      margin: 20px auto;
+      display: none;
+    }
+    #status {
+      margin-top: 20px;
+      padding: 10px;
+      border-radius: 4px;
+      display: none;
+    }
+    .success {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    .error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+  </style>
+</head>
+<body>
+  <h1>S3 Image Uploader</h1>
+  
+  <div class="upload-container">
+    <p>Click to select an image or drag and drop it here</p>
+    <input type="file" id="file-input" accept="image/*">
+    <button class="upload-btn" id="select-btn">Select Image</button>
+    <img id="preview" src="#" alt="Preview">
+    <button class="upload-btn" id="upload-btn" style="display: none;">Upload to S3</button>
+  </div>
+  
+  <div id="status"></div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const fileInput = document.getElementById('file-input');
+      const selectBtn = document.getElementById('select-btn');
+      const uploadBtn = document.getElementById('upload-btn');
+      const preview = document.getElementById('preview');
+      const status = document.getElementById('status');
+      const uploadContainer = document.querySelector('.upload-container');
+
+      // Handle click on select button
+      selectBtn.addEventListener('click', function() {
+        fileInput.click();
+      });
+
+      // Handle file selection
+      fileInput.addEventListener('change', function() {
+        if (fileInput.files && fileInput.files[0]) {
+          const reader = new FileReader();
+          
+          reader.onload = function(e) {
+            preview.src = e.target.result;
+            preview.style.display = 'block';
+            uploadBtn.style.display = 'inline-block';
+          };
+          
+          reader.readAsDataURL(fileInput.files[0]);
+        }
+      });
+
+      // Handle drag and drop
+      uploadContainer.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        uploadContainer.style.borderColor = '#45a049';
+      });
+
+      uploadContainer.addEventListener('dragleave', function() {
+        uploadContainer.style.borderColor = '#ccc';
+      });
+
+      uploadContainer.addEventListener('drop', function(e) {
+        e.preventDefault();
+        uploadContainer.style.borderColor = '#ccc';
+        
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          fileInput.files = e.dataTransfer.files;
+          const reader = new FileReader();
+          
+          reader.onload = function(e) {
+            preview.src = e.target.result;
+            preview.style.display = 'block';
+            uploadBtn.style.display = 'inline-block';
+          };
+          
+          reader.readAsDataURL(e.dataTransfer.files[0]);
+        }
+      });
+
+      // Handle upload
+      uploadBtn.addEventListener('click', function() {
+        if (!fileInput.files || !fileInput.files[0]) {
+          showStatus('Please select an image first', 'error');
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('image', fileInput.files[0]);
+
+        // Show loading status
+        showStatus('Uploading...', '');
+        
+        fetch('/upload', {
+          method: 'POST',
+          body: formData
+        })
+        .then(response => {
+          if (!response.ok) {
+            return response.json().then(err => {
+              throw new Error(err.error || 'Upload failed');
+            });
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log('Upload successful:', data);
+          showStatus(`File uploaded successfully! URL: ${data.fileUrl}`, 'success');
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          showStatus(`Error uploading file: ${error.message}`, 'error');
+        });
+      });
+
+      function showStatus(message, type) {
+        status.textContent = message;
+        status.style.display = 'block';
+        status.className = '';
+        if (type) {
+          status.classList.add(type);
+        }
+      }
+    });
+  </script>
+</body>
+</html> 
