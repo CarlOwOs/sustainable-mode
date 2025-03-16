@@ -207,6 +207,7 @@ I am selling a used mac charger.
 ---
 
 ### Step 4: Run file selection AppleScript. RUN THE SCRIPT ONLY ONCE.
+- While the AppleScript is running, do not click on anything else.
 
 ---
 
